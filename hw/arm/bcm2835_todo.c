@@ -6,12 +6,13 @@
 #include "hw/sysbus.h"
 #include <sys/types.h>         
 #include <sys/socket.h>
-#include "qapi/qmp/qjson.h"
+//#include "qapi/qmp/qjson.h"
 #include <string.h>
 #include <netdb.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <errno.h>
+#include <json/json.h>
 
 #define TYPE_BCM2835_TODO "bcm2835_todo"
 #define BCM2835_TODO(obj) \
@@ -89,6 +90,32 @@ static int setup_socket(void) {
         fprintf(stderr, "[QEMU][Raspi] ERROR connecting(%d): %s \n", errno, strerror(errno));
         exit(1);
     }
+
+
+	/*Creating a json object*/
+	json_object *jobj = json_object_new_object();
+
+	/*Creating a json integer*/
+	json_object *PinNo = json_object_new_int(10);
+
+	/*Creating a json boolean*/
+	json_object *PinValue = json_object_new_boolean(1);
+
+	/*Creating a json boolean*/
+	json_object *PinDir = json_object_new_string("input");
+
+	/*Creating a json array*/
+	json_object *jarray = json_object_new_array();
+
+	
+	/*Adding the above created json strings to the array*/
+	json_object_array_add(jarray,PinNo);
+	json_object_array_add(jarray,PinValue);
+	json_object_array_add(jarray,PinDir);
+	
+	json_object_object_add(jobj,"Pin Details", jarray);
+	printf("Size of JSON_TO_STRING- %lu,\n %s\n", sizeof(json_object_to_json_string(jobj)), 	json_object_to_json_string(jobj));
+        int n = write(socketfd, json_object_to_json_string(jobj), sizeof(json_object_to_json_string(jobj)));
     return socketfd;
 }
 
@@ -101,9 +128,10 @@ static uint64_t read_gpio(bcm2835_todo_state *s, unsigned int offset) {
         fprintf(stderr, "[QEMU][TOS] Warnning! GPIO read from unknown offset %x!", offset);
         return (uint64_t)0xffffffff;
     }
-
+	
     /* Send msg to server */
     bzero(buf, 256);
+	/***************** print level**************/
     sprintf(buf, "#R\n");
 
     n = write(s->socketfd, buf, strlen(buf));
@@ -137,6 +165,15 @@ static void write_gpio(bcm2835_todo_state *s, uint64_t value, short bit) {
         /* Send msg to server */
     bzero(buf, 256);
     sprintf(buf, "PIN%dW%d\n", pin, bit);
+	
+    /* json code for filling array
+      [ "PinNo" :
+	"PinValue":
+	"PinDir":    ]
+	*/
+	//PinDir will be always Output when you are writing to it
+
+	
 
     n = write(s->socketfd, buf, strlen(buf));
 
@@ -166,10 +203,10 @@ static uint64_t bcm2835_todo_read(void *opaque, hwaddr offset,
         case 0x10: //FS4
         case 0x14: //FS5
             return 0;
-	    case GPLEV0: 
-	        value = read_gpio(s, (unsigned int)offset);  //GPLEV0
+	case GPLEV0: 
+	        value = read_gpio(s, (unsigned int)offset);break;
         case GPLEV1:
-            value = read_gpio(s, (unsigned int)offset);  //GPLEV1
+            value = read_gpio(s, (unsigned int)offset); break;
         case 0x94:  //GPPUD 
             value = 0;
         default:
@@ -191,7 +228,10 @@ static void bcm2835_todo_write(void *opaque, hwaddr offset,
     bcm2835_todo_state *s = (bcm2835_todo_state *)opaque;
     
     switch (offset) {
-        case GPFSEL0: // fprintf(stderr, "Function Select 0\n"); break;  //FS0  pin 0-9
+        case GPFSEL0: 
+		/*Creating a json boolean*/
+		//json_object *PinDir = json_object_new_string("output");
+			// fprintf(stderr, "Function Select 0\n"); break;  //FS0  pin 0-9
         case GPFSEL1: //fprintf(stderr, "Function Select 1\n");  break;  //FS1 pin 10-19
         case GPFSEL2: //FS2  pin 20-29
         case GPFSEL3: //FS3  pin 30-39
@@ -201,6 +241,7 @@ static void bcm2835_todo_write(void *opaque, hwaddr offset,
 
         case GPSET0:
             write_gpio(s, value, 1);  // Pin Output Set 0
+	    fprintf(stderr, "[QEMU][Raspi] Value at GPSET0 is %d!", value);
             break;
         case GPSET1:        
             fprintf(stderr, "[QEMU][Raspi] Warning! Write to Pin 32-53 not set!\n");
@@ -208,9 +249,11 @@ static void bcm2835_todo_write(void *opaque, hwaddr offset,
         case GPCLR0: 
 	        // fprintf(stderr, "Pin Output Clear 0\n"); break;
             write_gpio(s, value, 0);  // Pin Output Clear 0
+	    fprintf(stderr, "[QEMU][Raspi] Value at GPCLR0 is %d!", value);
             break;
         case GPCLR1:
             fprintf(stderr, "[QEMU][Raspi] Warning! Write to Pin 32-53 not set!\n");
+	    
             break;
         case 0x94:
             break;
@@ -282,3 +325,4 @@ static void bcm2835_todo_register_types(void)
 }
 
 type_init(bcm2835_todo_register_types)
+
