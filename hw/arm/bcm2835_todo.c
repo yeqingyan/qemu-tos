@@ -40,11 +40,17 @@
 #define GPLEV0  0x34
 #define GPLEV1  0x38
 
+
+#define check_bit(var,pos)  ((var) & (1<<(pos)))
+
 typedef struct {
     SysBusDevice busdev;
     MemoryRegion iomem;
     int socketfd;
 } bcm2835_todo_state;
+
+
+int current_pinDir =9; //random number other than 1 and 0
 
 /* Get pin number */
 static int get_pin(uint64_t value) {
@@ -92,30 +98,7 @@ static int setup_socket(void) {
     }
 
 
-	/*Creating a json object*/
-	json_object *jobj = json_object_new_object();
-
-	/*Creating a json integer*/
-	json_object *PinNo = json_object_new_int(10);
-
-	/*Creating a json boolean*/
-	json_object *PinValue = json_object_new_boolean(1);
-
-	/*Creating a json boolean*/
-	json_object *PinDir = json_object_new_string("input");
-
-	/*Creating a json array*/
-	json_object *jarray = json_object_new_array();
-
 	
-	/*Adding the above created json strings to the array*/
-	json_object_array_add(jarray,PinNo);
-	json_object_array_add(jarray,PinValue);
-	json_object_array_add(jarray,PinDir);
-	
-	json_object_object_add(jobj,"Pin Details", jarray);
-	printf("Size of JSON_TO_STRING- %lu,\n %s\n", sizeof(json_object_to_json_string(jobj)), 	json_object_to_json_string(jobj));
-        int n = write(socketfd, json_object_to_json_string(jobj), sizeof(json_object_to_json_string(jobj)));
     return socketfd;
 }
 
@@ -151,9 +134,9 @@ static uint64_t read_gpio(bcm2835_todo_state *s, unsigned int offset) {
     // }    
 
     // value = atoi(buf);
-    // fprintf(stderr, "[QEMU] TOS GPIO: read %d from %x\n", value, (unsigned int)offset);
+    fprintf(stderr, "\n[QEMU] TOS READ GPIO: read %d from %x\n", value, (unsigned int)offset);
 
-    fprintf(stderr, "[QEMU][TOS] Warnning! FIXME, add logic for read");
+    //fprintf(stderr, "[QEMU][TOS] Warnning! FIXME, add logic for read");
     return (uint64_t) value; 
 }
 
@@ -166,6 +149,35 @@ static void write_gpio(bcm2835_todo_state *s, uint64_t value, short bit) {
     bzero(buf, 256);
     sprintf(buf, "PIN%dW%d\n", pin, bit);
 	
+
+    	/*Creating a json object*/
+	json_object *jobj = json_object_new_object();
+
+	/*Creating a json integer*/
+	json_object *PinNo = json_object_new_int(pin);
+
+	/*Creating a json boolean*/
+	json_object *PinValue = json_object_new_boolean(bit);
+	json_object *PinDir = json_object_new_int(current_pinDir);
+
+	/*if(current_pinDir ==0)
+		json_object *PinDir = "input";
+	else if (current_pinDir ==1)
+		json_object *PinDir = "output";
+	else json_object *PinDir = "unknown pin function";*/
+
+	/*Creating a json array*/
+	json_object *jarray = json_object_new_array();
+
+	
+	/*Adding the above created json strings to the array*/
+	json_object_array_add(jarray,PinNo);
+	json_object_array_add(jarray,PinValue);
+	json_object_array_add(jarray,PinDir);
+	
+	json_object_object_add(jobj,"Pin Details", jarray);
+	printf("Size of JSON_TO_STRING- %lu,\n %s\n", sizeof(json_object_to_json_string(jobj)), json_object_to_json_string(jobj));
+        n = write(s->socketfd, json_object_to_json_string(jobj), sizeof(json_object_to_json_string(jobj)));
     /* json code for filling array
       [ "PinNo" :
 	"PinValue":
@@ -175,7 +187,7 @@ static void write_gpio(bcm2835_todo_state *s, uint64_t value, short bit) {
 
 	
 
-    n = write(s->socketfd, buf, strlen(buf));
+   // n = write(s->socketfd, buf, strlen(buf));
 
     if (n < 0) {
         fprintf(stderr, "[QEMU][Raspi] ERROR %s writing to socket\n", strerror(errno));
@@ -215,7 +227,22 @@ static uint64_t bcm2835_todo_read(void *opaque, hwaddr offset,
     }
     return value;
 }
-
+int get_pin_from_GPFSEL( uint64_t value)
+{	
+	fprintf(stderr, "[QEMU][Raspi] in function value in hex = %x!\n", value);
+    int pin=0;
+    int n;
+    for(n=0;n<30;n+3)
+    {
+	if(check_bit(value,n)) 
+	{
+		pin=pin+n;
+		//break;
+	}
+    }	
+    
+    return pin;
+}
 /*
  * Write to socket 
  * Format: 
@@ -226,14 +253,32 @@ static void bcm2835_todo_write(void *opaque, hwaddr offset,
     uint64_t value, unsigned size)
 {
     bcm2835_todo_state *s = (bcm2835_todo_state *)opaque;
-    
+    int pin=-1;
     switch (offset) {
-        case GPFSEL0: 
-		/*Creating a json boolean*/
-		//json_object *PinDir = json_object_new_string("output");
-			// fprintf(stderr, "Function Select 0\n"); break;  //FS0  pin 0-9
-        case GPFSEL1: //fprintf(stderr, "Function Select 1\n");  break;  //FS1 pin 10-19
+        case GPFSEL0: //FS0  pin 0-9
+		//current_pinDir = value;	
+		//fprintf(stderr, "[QEMU][Raspi] GPSEL0 %d!\n", value);
+		pin = get_pin_from_GPFSEL(value);
+		fprintf(stderr, "[QEMU][Raspi] GPSEL0 pin=  %d!\n", pin);		
+		break;
+
+        case GPFSEL1:  //FS1 pin 10-19
+		//current_pinDir = value;	
+		//fprintf(stderr, "[QEMU][Raspi] GPSEL1 %d!\n", value);
+		pin = get_pin_from_GPFSEL(value);
+		pin = pin+10;
+		fprintf(stderr, "[QEMU][Raspi] GPSEL1 pin=  %d!\n", pin);		
+		break;
+
+ 
         case GPFSEL2: //FS2  pin 20-29
+		//current_pinDir = value;	
+		//fprintf(stderr, "[QEMU][Raspi] GPSEL2 %x!\n", value);
+		pin = get_pin_from_GPFSEL(value);
+		pin = pin+20;
+		fprintf(stderr, "[QEMU][Raspi] GPSEL2 pin=  %d!\n", pin);		
+		break;
+
         case GPFSEL3: //FS3  pin 30-39
         case GPFSEL4: //FS4  pin 40-49
         case GPFSEL5: //FS5  pin 50-53
@@ -241,7 +286,7 @@ static void bcm2835_todo_write(void *opaque, hwaddr offset,
 
         case GPSET0:
             write_gpio(s, value, 1);  // Pin Output Set 0
-	    fprintf(stderr, "[QEMU][Raspi] Value at GPSET0 is %d!", value);
+	    //fprintf(stderr, "[QEMU][Raspi] Value at GPSET0 is %d!", value);
             break;
         case GPSET1:        
             fprintf(stderr, "[QEMU][Raspi] Warning! Write to Pin 32-53 not set!\n");
@@ -249,7 +294,7 @@ static void bcm2835_todo_write(void *opaque, hwaddr offset,
         case GPCLR0: 
 	        // fprintf(stderr, "Pin Output Clear 0\n"); break;
             write_gpio(s, value, 0);  // Pin Output Clear 0
-	    fprintf(stderr, "[QEMU][Raspi] Value at GPCLR0 is %d!", value);
+	    //fprintf(stderr, "[QEMU][Raspi] Value at GPCLR0 is %d!", value);
             break;
         case GPCLR1:
             fprintf(stderr, "[QEMU][Raspi] Warning! Write to Pin 32-53 not set!\n");
