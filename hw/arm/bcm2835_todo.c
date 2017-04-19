@@ -39,9 +39,27 @@
 #define GPCLR1  0x2C
 #define GPLEV0  0x34
 #define GPLEV1  0x38
+#define GPEDS0  0x40 
+#define GPEDS1  0x44 
+#define GPREN0  0x4c 
+#define GPREN1  0x50 
+#define GPFEN0  0x58 
+#define GPFEN1  0x5c 
+#define GPHEN0  0x64 
+#define GPHEN1  0x68 
+#define GPLEN0  0x70 
+#define GPLEN1  0x74 
+#define GPAREN0  0x7c 
+#define GPAREN1  0x80 
+#define GPAFEN0  0x88 
+#define GPAFEN1  0x8c 
+#define GPPUD    0x94 
+#define GPPUDCLK0   0x98 
+#define GPPUDCLK1   0x9c 
 
 
-#define check_bit(var,pos)  ((var) & (1<<(pos)))
+
+//#define check_bit(var,pos)  ((var) & (1<<(pos)))
 
 typedef struct {
     SysBusDevice busdev;
@@ -215,11 +233,15 @@ static uint64_t bcm2835_todo_read(void *opaque, hwaddr offset,
         case 0x10: //FS4
         case 0x14: //FS5
             return 0;
-	case GPLEV0: 
-	        value = read_gpio(s, (unsigned int)offset);break;
-        case GPLEV1:
+	case GPLEV0: //GPIO Pin Level 0
+	    value = read_gpio(s, (unsigned int)offset);  // request pin status to simulator
+	    fprintf(stderr, "[QEMU][Raspi] GPLEV0 value = %x!\n", value);
+	    break;
+        case GPLEV1:  //GPIO Pin Level 1
             value = read_gpio(s, (unsigned int)offset); break;
-        case 0x94:  //GPPUD 
+	    fprintf(stderr, "[QEMU][Raspi] GPLEV1 value = %x!\n", value);
+	    break;
+        case GPPUD:  
             value = 0;
         default:
             fprintf(stderr, "[QEMU][Raspi] Warning Read from unknown offset %x!\n", (unsigned int)offset);
@@ -229,9 +251,9 @@ static uint64_t bcm2835_todo_read(void *opaque, hwaddr offset,
 }
 int get_pin_from_GPFSEL( uint64_t value)
 {	
-	fprintf(stderr, "[QEMU][Raspi] in function value in hex = %x!\n", value);
+    fprintf(stderr, "[QEMU][Raspi] in function value in hex = %x!\n", value);
     int pin=0;
-    int n;
+   /* int n;
     for(n=0;n<30;n+3)
     {
 	if(check_bit(value,n)) 
@@ -239,8 +261,21 @@ int get_pin_from_GPFSEL( uint64_t value)
 		pin=pin+n;
 		//break;
 	}
-    }	
-    
+    }	*/
+
+	switch(value) {
+	   case 0x1: pin=0;break;
+    	   case 0x8: pin=1;break;
+	   case 0x40: pin=2;break;
+    	   case 0x200: pin=3;break;
+	   case 0x1000: pin=4;break;
+    	   case 0x8000: pin=5;break;
+           case 0x40000: pin=6;break;
+    	   case 0x200000: pin=7;break;
+           case 0x1000000: pin=8;break;
+    	   case 0x8000000: pin=9;break;
+	   default: pin=-6;
+         }
     return pin;
 }
 /*
@@ -253,36 +288,40 @@ static void bcm2835_todo_write(void *opaque, hwaddr offset,
     uint64_t value, unsigned size)
 {
     bcm2835_todo_state *s = (bcm2835_todo_state *)opaque;
-    int pin=-1;
+    int pin_no=-1;
     switch (offset) {
         case GPFSEL0: //FS0  pin 0-9
-		//current_pinDir = value;	
-		//fprintf(stderr, "[QEMU][Raspi] GPSEL0 %d!\n", value);
-		pin = get_pin_from_GPFSEL(value);
-		fprintf(stderr, "[QEMU][Raspi] GPSEL0 pin=  %d!\n", pin);		
+		pin_no = get_pin_from_GPFSEL(value);
+		fprintf(stderr, "[QEMU][Raspi] GPSEL0 pin=  %d!\n", pin_no);		
 		break;
 
         case GPFSEL1:  //FS1 pin 10-19
-		//current_pinDir = value;	
-		//fprintf(stderr, "[QEMU][Raspi] GPSEL1 %d!\n", value);
-		pin = get_pin_from_GPFSEL(value);
-		pin = pin+10;
-		fprintf(stderr, "[QEMU][Raspi] GPSEL1 pin=  %d!\n", pin);		
+		pin_no = get_pin_from_GPFSEL(value);
+		if(pin_no!=-6)  pin_no = pin_no+10;
+		fprintf(stderr, "[QEMU][Raspi] GPSEL1 pin=  %d!\n", pin_no);		
 		break;
-
  
         case GPFSEL2: //FS2  pin 20-29
-		//current_pinDir = value;	
-		//fprintf(stderr, "[QEMU][Raspi] GPSEL2 %x!\n", value);
-		pin = get_pin_from_GPFSEL(value);
-		pin = pin+20;
-		fprintf(stderr, "[QEMU][Raspi] GPSEL2 pin=  %d!\n", pin);		
+		pin_no = get_pin_from_GPFSEL(value);
+		if(pin_no!=-6)  pin_no = pin_no+20;
+		fprintf(stderr, "[QEMU][Raspi] GPSEL2 pin=  %d!\n", pin_no);		
 		break;
 
         case GPFSEL3: //FS3  pin 30-39
+		pin_no = get_pin_from_GPFSEL(value);
+		if(pin_no!=-6)  pin_no = pin_no+30;
+		fprintf(stderr, "[QEMU][Raspi] GPSEL3 pin=  %d!\n", pin_no);		
+		break;
         case GPFSEL4: //FS4  pin 40-49
+		pin_no = get_pin_from_GPFSEL(value);
+		if(pin_no!=-6)  pin_no = pin_no+40;
+		fprintf(stderr, "[QEMU][Raspi] GPSEL4 pin=  %d!\n", pin_no);		
+		break;
         case GPFSEL5: //FS5  pin 50-53
-            break ;
+		pin_no = get_pin_from_GPFSEL(value);
+		if(pin_no!=-6)  pin_no = pin_no+50;
+		fprintf(stderr, "[QEMU][Raspi] GPSEL5 pin=  %d!\n", pin_no);		
+		break;
 
         case GPSET0:
             write_gpio(s, value, 1);  // Pin Output Set 0
