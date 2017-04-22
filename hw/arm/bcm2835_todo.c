@@ -162,7 +162,7 @@ static void write_gpio(bcm2835_todo_state *s, uint64_t value, short bit) {
 	
 
     	/*Creating a json object*/
-	//json_object *jobj = json_object_new_object();
+	json_object *jobj = json_object_new_object();
 
 	/*Creating a json integer*/
 	//json_object *PinNo = json_object_new_int(pin);
@@ -183,17 +183,14 @@ static void write_gpio(bcm2835_todo_state *s, uint64_t value, short bit) {
 	//json_object_object_add(jobj,"PinDetails", jarray);
 
 
-	json_object_object_add(jobj,"PinNum", json_object_new_int(pin));
+	json_object_object_add(jobj,"PinNum", json_object_new_double(pin));
 	json_object_object_add(jobj,"PinVal", json_object_new_boolean(bit));
 	json_object_object_add(jobj,"PinDir", json_object_new_boolean((PinDir_Reg >> pin) & 1));
 
 	printf("Size of JSON_TO_STRING- %lu,\n %s\n", sizeof(json_object_to_json_string(jobj)), json_object_to_json_string(jobj));
-        n = write(s->socketfd, json_object_to_json_string(jobj), sizeof(json_object_to_json_string(jobj)));
-	//void 	json_object_object_add (struct json_object *obj, const char *key, struct json_object *val)
-	printf("Size of JSON_TO_STRING- %lu,\n %s\n", sizeof(json_object_to_json_string(jobj)), json_object_to_json_string(jobj));
-        n = write(s->socketfd, json_object_to_json_string(jobj), sizeof(json_object_to_json_string(jobj)));
-   
-   	// n = write(s->socketfd, buf, strlen(buf));
+        n = write(s->socketfd, json_object_to_json_string(jobj), 157);
+	n=write(s->socketfd,"\n",2);
+	
 
     if (n < 0) {
         fprintf(stderr, "[QEMU][Raspi] ERROR %s writing to socket\n", strerror(errno));
@@ -239,32 +236,19 @@ static uint64_t bcm2835_todo_read(void *opaque, hwaddr offset,
 }
 int get_pin_from_GPFSEL( uint64_t value)
 {	
-    //fprintf(stderr, "[QEMU][Raspi] in function value in hex = %x!\n", value);
-    int pin=0;
-   /* int n;
-    for(n=0;n<30;n+3)
-    {
-	if(check_bit(value,n)) 
+        int pin = -1;
+	int i=0;
+	int pos=0;
+	for(;pos<30;pos=pos+3)
 	{
-		pin=pin+n;
-		//break;
-	}
-    }	*/
-
-	switch(value) {
-	   //case 0x0: pin=0;break;
-	   case 0x1: pin=0;break;
-    	   case 0x8: pin=1;break;
-	   case 0x40: pin=2;break;
-    	   case 0x200: pin=3;break;
-	   case 0x1000: pin=4;break;
-    	   case 0x8000: pin=5;break;
-           case 0x40000: pin=6;break;
-    	   case 0x200000: pin=7;break;
-           case 0x1000000: pin=8;break;
-    	   case 0x8000000: pin=9;break;
-	   default: pin=-6;
-         }
+		i++;
+		if(value & (1<<pos))  
+		{
+			pin=pin+i;
+			break;
+		}
+	    }	
+    //printf("Pin is %x\n %d\n", pin,pin);
     return pin;
 }
 /*
@@ -286,7 +270,7 @@ static void bcm2835_todo_write(void *opaque, hwaddr offset,
 			pin_no = get_pin_from_GPFSEL(value);
 			PinDir_Reg |= 1 << pin_no; 
 		}
-		fprintf(stderr, "[QEMU][Raspi] GPSEL0 pin=  %d Pin_Reg = %x!\n", pin_no,PinDir_Reg);	
+		//fprintf(stderr, "[QEMU][Raspi] GPSEL0 pin=  %d Pin_Reg = %x!\n", pin_no,PinDir_Reg);	
 		break;
 
         case GPFSEL1:  //FS1 pin 10-19
@@ -296,7 +280,7 @@ static void bcm2835_todo_write(void *opaque, hwaddr offset,
 			PinDir_Reg |= 1 << pin_no;
 		}
 		
-		fprintf(stderr, "[QEMU][Raspi] GPSEL1 pin=  %d Pin_Reg = %x!\n", pin_no,PinDir_Reg);	
+		//fprintf(stderr, "[QEMU][Raspi] GPSEL1 pin=  %d Pin_Reg = %x!\n", pin_no,PinDir_Reg);	
 		break;
  
         case GPFSEL2: //FS2  pin 20-29
@@ -305,7 +289,7 @@ static void bcm2835_todo_write(void *opaque, hwaddr offset,
 			pin_no = pin_no+20;
 			PinDir_Reg |= 1 << pin_no;
 		}
-		fprintf(stderr, "[QEMU][Raspi] GPSEL2 pin=  %d Pin_Reg = %x!\n", pin_no,PinDir_Reg);	
+		//fprintf(stderr, "[QEMU][Raspi] GPSEL2 pin=  %d Pin_Reg = %x!\n", pin_no,PinDir_Reg);	
 		break;
 
         case GPFSEL3: //FS3  pin 30-39
@@ -314,7 +298,7 @@ static void bcm2835_todo_write(void *opaque, hwaddr offset,
 			pin_no = pin_no+30;
 			PinDir_Reg |= 1 << pin_no;
 		}
-		fprintf(stderr, "[QEMU][Raspi] GPSEL3 pin=  %d Pin_Reg = %x!\n", pin_no,PinDir_Reg);	
+		//fprintf(stderr, "[QEMU][Raspi] GPSEL3 pin=  %d Pin_Reg = %x!\n", pin_no,PinDir_Reg);	
 		break;
 
         case GPFSEL4: //FS4  pin 40-49
@@ -323,7 +307,7 @@ static void bcm2835_todo_write(void *opaque, hwaddr offset,
 			pin_no = pin_no+40;
 			PinDir_Reg |= 1 << pin_no;
 		}
-		fprintf(stderr, "[QEMU][Raspi] GPSEL4 pin=  %d Pin_Reg = %x!\n", pin_no,PinDir_Reg);		
+		//fprintf(stderr, "[QEMU][Raspi] GPSEL4 pin=  %d Pin_Reg = %x!\n", pin_no,PinDir_Reg);		
 		break;
 
         case GPFSEL5: //FS5  pin 50-53
@@ -332,7 +316,7 @@ static void bcm2835_todo_write(void *opaque, hwaddr offset,
 			pin_no = pin_no+50;
 			PinDir_Reg |= 1 << pin_no;
 		}
-		fprintf(stderr, "[QEMU][Raspi] GPSEL5 pin=  %d Pin_Reg = %x!\n", pin_no,PinDir_Reg);		
+		//fprintf(stderr, "[QEMU][Raspi] GPSEL5 pin=  %d Pin_Reg = %x!\n", pin_no,PinDir_Reg);		
 		break;
 
         case GPSET0:
