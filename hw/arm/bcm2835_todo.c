@@ -160,27 +160,10 @@ static void write_gpio(bcm2835_todo_state *s, uint64_t value, short bit) {
     bzero(buf, 256);
     sprintf(buf, "PIN%dW%d\n", pin, bit);
 	
-
-    	/*Creating a json object*/
+	/*
+    	Creating a json object
 	json_object *jobj = json_object_new_object();
 
-	/*Creating a json integer*/
-	//json_object *PinNo = json_object_new_int(pin);
-
-	/*Creating a json boolean*/
-	//json_object *PinValue = json_object_new_boolean(bit);
-	//json_object *PinDir = json_object_new_boolean((PinDir_Reg >> pin) & 1);
-
-	/*Creating a json array*/
-	//json_object *jarray = json_object_new_array();
-
-	
-	/*Adding the above created json strings to the array*/
-	/*json_object_array_add(jarray,PinNo);
-	json_object_array_add(jarray,PinValue);
-	json_object_array_add(jarray,PinDir);*/
-	
-	//json_object_object_add(jobj,"PinDetails", jarray);
 
 
 	json_object_object_add(jobj,"PinNum", json_object_new_double(pin));
@@ -190,7 +173,20 @@ static void write_gpio(bcm2835_todo_state *s, uint64_t value, short bit) {
 	printf("Size of JSON_TO_STRING- %lu,\n %s\n", sizeof(json_object_to_json_string(jobj)), json_object_to_json_string(jobj));
         n = write(s->socketfd, json_object_to_json_string(jobj), 157);
 	n=write(s->socketfd,"\n",2);
+	*/
+
+
 	
+	/*Creating a json object*/
+	json_object *jobj = json_object_new_object();
+	json_object_object_add(jobj,"PinNum", json_object_new_int(pin));
+	json_object_object_add(jobj,"PinVal", json_object_new_boolean(bit));
+	json_object_object_add(jobj,"PinDir", json_object_new_boolean((PinDir_Reg >> pin) & 1));
+	//json_object_object_add(obj,"PinDetails", jobj);
+	//printf("Size of String %lu,\n %s\n", 64, json_object_to_json_string(obj));
+	const char * string = json_object_to_json_string(jobj);
+	printf("write string %s\n", string);
+	write(s->socketfd, string, strlen(string));
 
     if (n < 0) {
         fprintf(stderr, "[QEMU][Raspi] ERROR %s writing to socket\n", strerror(errno));
