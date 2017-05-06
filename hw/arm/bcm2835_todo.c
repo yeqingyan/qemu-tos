@@ -6,7 +6,6 @@
 #include "hw/sysbus.h"
 #include <sys/types.h>         
 #include <sys/socket.h>
-//#include "qapi/qmp/qjson.h"
 #include <string.h>
 #include <netdb.h>
 #include <unistd.h>
@@ -123,31 +122,37 @@ static uint64_t read_gpio(bcm2835_todo_state *s, unsigned int offset) {
         return (uint64_t)0xffffffff;
     }
 	
-    /* Send msg to server */
-    bzero(buf, 256);
-	/***************** print level**************/
-    sprintf(buf, "#R\n");
+    
+    //sprintf(buf, "#R\n");
 
-    n = write(s->socketfd, buf, strlen(buf));
+    /*n = write(s->socketfd, buf, strlen(buf));
 
     if (n < 0) {
         fprintf(stderr, "[QEMU][Raspi] ERROR %s writing to socket\n", strerror(errno));
         exit(1);
-    }    
+    }  */  
 
-    // /* Read response */
-    // bzero(buf, 256);
-    // n = read(s->socketfd, buf, 255);
 
-    // if (n < 0) {
-    //     fprintf(stderr, "[QEMU][Raspi] READ ERROR %s reading from socket %s\n", strerror(errno), buf);
-    //     exit(1);
-    // }    
 
-    // value = atoi(buf);
+    bzero(buf, 256);  //places 256 null bytes in the string buf
+
+    
+    /*Creating a json object*/
+    /* This JSON object is to ask Simulator the value of a pin */
+    json_object *jobj = json_object_new_object();
+    json_object_object_add(jobj,"PinSet", json_object_new_int(offset));
+
+    const char * string = json_object_to_json_string(jobj);
+    printf("read string %s\n", string);
+    /* read 255 bytes from the socket into the buffer pointed to by buf */
+    n = read(s->socketfd, buf, 255); // buf will have 1 or 0  as pin value
+
+    if (n < 0) {
+        fprintf(stderr, "[QEMU][Raspi] READ ERROR %s reading from socket %s\n", strerror(errno), buf);
+        exit(1);
+    } 
+    value = atoi(buf);
     fprintf(stderr, "\n[QEMU] TOS READ GPIO: read %d from %x\n", value, (unsigned int)offset);
-
-    //fprintf(stderr, "[QEMU][TOS] Warnning! FIXME, add logic for read");
     return (uint64_t) value; 
 }
 
@@ -200,6 +205,8 @@ static void write_gpio(bcm2835_todo_state *s, uint64_t value, short bit) {
 /*
  * Read from socket 
  */
+
+//internal  call
 static uint64_t bcm2835_todo_read(void *opaque, hwaddr offset,
     unsigned size)
 {
@@ -214,12 +221,12 @@ static uint64_t bcm2835_todo_read(void *opaque, hwaddr offset,
         case 0x10: //FS4
         case 0x14: //FS5
             return 0;
-	case GPLEV0: //GPIO Pin Level 0
-	    value = read_gpio(s, (unsigned int)offset);  // request pin status to simulator
+	case GPLEV0: //GPIO Pin 0-31
+	    value = read_gpio(s, (unsigned int)offset);  // request pin status for 0-31 to the simulator
 	    fprintf(stderr, "[QEMU][Raspi] GPLEV0 value = %x!\n", value);
 	    break;
-        case GPLEV1:  //GPIO Pin Level 1
-            value = read_gpio(s, (unsigned int)offset); break;
+        case GPLEV1:  //GPIO Pin 32-53
+            value = read_gpio(s, (unsigned int)offset); break;   // request pin status for 32-53 to the simulator
 	    fprintf(stderr, "[QEMU][Raspi] GPLEV1 value = %x!\n", value);
 	    break;
         case GPPUD:  
