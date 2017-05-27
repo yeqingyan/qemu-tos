@@ -22,7 +22,6 @@
 #define GPIO_TOTAL_PIN 54
 #define INPUT 0x00
 #define OUTPUT 0x01
-
 #define SETBIT(reg,bit) (reg |= (1 << (bit)))
 #define CLRBIT(reg,bit) (reg &= (~(1 << (bit))))
 /*
@@ -61,30 +60,30 @@
 #define GPPUDCLK1   0x9c 
 */
 
-
-//#define check_bit(var,pos)  ((var) & (1<<(pos)))
-
 typedef struct {
     SysBusDevice busdev;
     MemoryRegion iomem;
     int socketfd;
 
     uint32_t GPFSEL[6];
-   /* uint32_t GPFSEL0;   // 0x00 Function Select Pins 0-9   
-    uint32_t GPFSEL1;   // 0x04 Function Select Pins 10-19 
-    uint32_t GPFSEL2;   // 0x08 Function Select Pins 20-29 
-    uint32_t GPFSEL3;   // 0x0c Function Select Pins 30-39 
-    uint32_t GPFSEL4;   // 0x10 Function Select Pins 40-49 
-    uint32_t GPFSEL5;   // 0x14 Function Select Pins 50-53 */
+   /* GPFSEL[0] : 0x00 Function Select Pins 00-09   
+      GPFSEL[1] : 0x04 Function Select Pins 10-19 
+      GPFSEL[2] : 0x08 Function Select Pins 20-29 
+      GPFSEL[3] : 0x0c Function Select Pins 30-39 
+      GPFSEL[4] : 0x10 Function Select Pins 40-49 
+      GPFSEL[5] : 0x14 Function Select Pins 50-53 */
 
-    uint32_t GPSET[2];    // 0x1c Output Set Pins  0-31 [0=No Effect | 1=Set] 
-    //uint32_t GPSET1;    // 0x20 Output Set Pins 32-53 [0=No Effect | 1=Set] 
+    uint32_t GPSET[2];   
+  /* GPSET[0] : 0x1c Output Set Pins  0-31 [0=No Effect | 1=Set] 
+	 GPSET[1] : 0x20 Output Set Pins 32-53 [0=No Effect | 1=Set] */
 
-   // uint32_t GPCLR0;    // 0x28 Output Clear Pins   0-31 [0=No Effect | 1=Clear] 
-    uint32_t GPCLR[2];    // 0x2c Output Clear Pins  32-53 [0=No Effect | 1=Clear] 
+    uint32_t GPCLR[2];   
+  /* GPCLR[0] : 0x28 Output Clear Pins   0-31 [0=No Effect | 1=Clear]    
+	 GPCLR[1] : 0x2c Output Clear Pins  32-53 [0=No Effect | 1=Clear] */
 
-    uint32_t GPLEV[2];    // 0x34 Pin Level (Read Only)  0-31 [0=Low | 1=High] 
-    //uint32_t GPLEV1;    // 0x38 Pin Level (Read Only) 32-53 [0=Low | 1=High] 
+    uint32_t GPLEV[2];    
+ /* GPLEV[0] : 0x34 Pin Level (Read Only)  0-31 [0=Low | 1=High] 
+    GPLEV[1] : 0x38 Pin Level (Read Only) 32-53 [0=Low | 1=High]  */
 
     uint32_t GPEDS0;    // 0x40 Event Detect Pins  0-31 [0=Event Not Detected | 1=Event Detected] 
     uint32_t GPEDS1;    // 0x44 Event Detect Pins 32-53 [0=Event Not Detected | 1=Event Detected] 
@@ -109,20 +108,12 @@ typedef struct {
     
     uint32_t GPPUD;     // 0x94 Pull-Up/Pull-Down All Pins [Bits 1-0: 0=Disable Pull-Up/Pull-Down | 1=Enable Pull-Down Control | 2=Enable Pull-Up Control] 
     
-    uint32_t GPPUDCLK[2]; // 0x98 Pull-Up/Pull-Down Clock Pins  0-31 [0=No Effect | 1=Assert Clock on Line] 
-    //uint32_t GPPUDCLK1; // 0x9c Pull-Up/Pull-Down Clock Pins 32-53 [0=No Effect | 1=Assert Clock on Line] 
+    uint32_t GPPUDCLK[2]; 
+  /* GPPUDCLK[0] : 0x98 Pull-Up/Pull-Down Clock Pins  0-31 [0=No Effect | 1=Assert Clock on Line] 
+     GPPUDCLK[1] : 0x9c Pull-Up/Pull-Down Clock Pins 32-53 [0=No Effect | 1=Assert Clock on Line]  */
 
-    uint64_t PINSET; // Derived output state for pins  0-31 based on SET and CLR registers 
-   // uint32_t PINSET1; // Derived output state for pins  32-53 based on SET and CLR registers 
-	uint64_t PINDIR;
-
-    uint32_t PUDSET[4];
-   // uint32_t PUDSET0; //Derived state for pull up or pull down for Pins  0-15 [0b00= No PUD | 0b01 = Pull Up | 0b10 = Pull Down | 0b11 = Reserved ] 
-   // uint32_t PUDSET1; //Derived state for pull up or pull down for Pins 16-31 [0b00= No PUD | 0b01 = Pull Up | 0b10 = Pull Down | 0b11 = Reserved ] 
-   // uint32_t PUDSET2; //Derived state for pull up or pull down for Pins 32-47 [0b00= No PUD | 0b01 = Pull Up | 0b10 = Pull Down | 0b11 = Reserved ] 
-   // uint32_t PUDSET3; //Derived state for pull up or pull down for Pins 48-53 [0b00= No PUD | 0b01 = Pull Up | 0b10 = Pull Down | 0b11 = Reserved ] 
-
-
+    uint64_t PINSET; // Derived output state for pins 0-53 based on SET and CLR registers 
+	uint64_t PINDIR; // Derived direction state for pins 0-53 based on GPFSEL registers 
 } bcm2835_todo_state;
 
 // Get pin number 
@@ -132,7 +123,6 @@ static int get_pin(uint64_t value) {
         value = value >> 1;
         pin += 1;
     }
-    
     if(pin >=GPIO_REG_SIZE) {
         fprintf(stderr, "[QEMU][Raspi] Unknown pin number %d!", pin);
         exit(1);
@@ -162,11 +152,10 @@ static int setup_socket(void) {
     struct sockaddr_in serv_addr;
     struct hostent *local;
     int socketfd;
-    fprintf(stderr, "start setup socket\n");
-
+    fprintf(stderr, "Connecting to Server..\n");
     local = gethostbyname("localhost");
     if (local == NULL) {
-        fprintf(stderr, "[QEMU][Raspi] Can not get hostname");
+        fprintf(stderr, "[QEMU][Raspi] Cannot get hostname");
         exit(1);
     }
     socketfd = 0;
@@ -176,7 +165,6 @@ static int setup_socket(void) {
         fprintf(stderr, "[QEMU][Raspi] ERROR opening socket");
         exit(1);
     }
-
     memset((char *)&serv_addr, 0, sizeof(serv_addr));
     serv_addr.sin_family = AF_INET;
     bcopy((char *)local->h_addr, (char *)&serv_addr.sin_addr.s_addr, local->h_length);
@@ -189,72 +177,37 @@ static int setup_socket(void) {
     return socketfd;
 }
 
-static char * convert_to_string(uint32_t reg)
-{
-	char buffer[30] = {0};
-	sprintf(buffer,"%.9d", reg);
-	printf("%s\n", buffer);
-	return buffer; 
-}
-
-static uint64_t json_parse(json_object * jobj) {
-	 enum json_type type;
-	 json_object_object_foreach(jobj, key, val) 
-	 {
-		 type = json_object_get_type(val);
-		 switch (type) 
-		 {
-			 case json_type_int: printf("type: json_type_int, ");
-			 //printf("value: %d", json_object_get_int(val));
-			 return json_object_get_int(val);
-			 break;
-		 }
-	 }
-}
 static uint64_t read_gpio(bcm2835_todo_state *s) {
 
-    int i;
+    int i,n;
     char buf[256];
-    //char buffer[50];
-    int n;
     uint64_t GPLEV_64=0,mask;
     bzero(buf, 256);  //places 256 null bytes in the string buf
-
-    char PINSET[30];
-	//char  ch[10];
-	//char GPFSEL[6][50];
-	char PINDIR[30];
+    char PINSET[30],PINDIR[30];
 	
 	//Creating a json object to send to GPIO Simulator
 	json_object *jobj = json_object_new_object();
-	sprintf(PINDIR,"%d", s->PINDIR); //ld??????
+	sprintf(PINDIR,"%d", s->PINDIR); 
 	sprintf(PINSET,"%d", s->PINSET);
-	fprintf(stderr, "\n\n[QEMU][Raspi] PINDIR= %d, PINSET = %d \n",s->PINDIR,s->PINSET);
+	//fprintf(stderr, "\n\n[QEMU][Raspi] PINDIR= %d, PINSET = %d \n",s->PINDIR,s->PINSET);
 	json_object_object_add(jobj,"PINDIR", json_object_new_string(PINDIR));
 	json_object_object_add(jobj,"PINSET", json_object_new_string(PINSET));
-	json_object_object_add(jobj,"READ", json_object_new_boolean(true)); // this field is used to by Simulator to decide whether to send back PINSET values or not
+	json_object_object_add(jobj,"READ", json_object_new_boolean(true)); // this field is used by Simulator to decide whether to send back PINSET values or not
 
 	const char * string = json_object_to_json_string(jobj);
 	printf("\n read %s  size: %d\n", string,strlen(string));
 	n = write(s->socketfd, string, strlen(string)); // Send the JSON String to GPIO Simulator
    	n = write(s->socketfd, "\n", 1);
-	if (n < 0) 
-	{
-      	  fprintf(stderr, "[QEMU][Raspi] ERROR %s writing to socket\n", strerror(errno));
-       // exit(1);
-    	}    
+	if (n < 0)  {
+		fprintf(stderr, "[QEMU][Raspi] ERROR %s writing to socket\n", strerror(errno));
+    }    
 	
+	/*Read from Socket the PINSET values*/
    	while(read(s->socketfd, buf, 255) <= 0);
-
 	printf("\nString received:  %s \n", buf);
 	GPLEV_64 = strtoull(buf, NULL, 16);
 	printf("\n Received PINSET value:  %d \n", GPLEV_64);
-	/*int LEV[2];
-	LEV[1] = (int)((s->PINSET >> GPIO_REG_SIZE) & 0xff);// 32-64
-	LEV[0] = (int)(s->PINSET & 0xff);        //0-32
 
-	printf("GPLEV0: %d GPLEV1: %d\n", LEV[0], LEV[1]);
-	*/
 	for (i=0; i<30; i++)
 	{
 		//mask = (i/GPIO_REG_SIZE==0) ? (1<<i) : (i<<(i-GPIO_REG_SIZE));
@@ -271,13 +224,10 @@ static uint64_t read_gpio(bcm2835_todo_state *s) {
 
 static void print_registers(bcm2835_todo_state *s)
 {
-	int i;
-	for (i=0; i<6; i++)
-    	{
+	for (int i=0; i<6; i++){
 		fprintf(stderr, "\n[QEMU][Raspi] s->GPFSEL[%d]  = %x!\n", i, s->GPFSEL[i]);
 	}
 	fprintf(stderr, "[QEMU][Raspi] s->PINSET  = %d!\n", s->PINSET);
-	//fprintf(stderr, "[QEMU][Raspi] s->PINSET[1]  = %x!\n", s->PINSET[1]);
 
 }
 
@@ -286,8 +236,6 @@ static void write_gpio(bcm2835_todo_state *s)
 {
     int i,n;
     uint32_t mask;
-	//uint64_t i;
-  
 	// adding pin values to PINSET and PINDIR
 	for (i=0; i < 30; i++)
    	{
@@ -318,10 +266,7 @@ static void write_gpio(bcm2835_todo_state *s)
 	
 	//print_registers(s);
 
-	char PINSET[30];
-	//char GPFSEL[6][50];
-	//char  ch[10];
-	char PINDIR[30];
+	char PINSET[30],PINDIR[30];
 	
 	//Creating a json object to send to GPIO Simulator
 	json_object *jobj = json_object_new_object();
@@ -337,9 +282,7 @@ static void write_gpio(bcm2835_todo_state *s)
    	n = write(s->socketfd, "\n", 1);
     if (n < 0) {
         fprintf(stderr, "[QEMU][Raspi] ERROR %s writing to socket\n", strerror(errno));
-       // exit(1);
     }    
-
     return;
 }
 
@@ -412,34 +355,34 @@ static void bcm2835_todo_write(void *opaque, hwaddr offset,
 		case 0x20: s->GPSET[(offset/4)-7] = (value & 0xffffffff);break;
 		case 0x28:
 		case 0x2c: s->GPCLR[(offset/4)-10] = (value & 0xffffffff); break;
-		/*
+
 		case 0x40: s->GPEDS0 = (value & 0xffffffff); break;
 		case 0x44: s->GPEDS1 = (value & 0xffffffff); break;
 		case 0x4c: s->GPREN0 = (value & 0xffffffff); break;
 		case 0x50: s->GPREN1 = (value & 0xffffffff); break;
-	      case 0x58: s->GPFEN0 = (value & 0xffffffff); break;
-	      case 0x5c: s->GPFEN1 = (value & 0xffffffff); break;
-	      case 0x64: s->GPHEN0 = (value & 0xffffffff); break;
-	      case 0x68: s->GPHEN1 = (value & 0xffffffff); break;
-	      case 0x70: s->GPLEN0 = (value & 0xffffffff); break;
-	      case 0x74: s->GPLEN1 = (value & 0xffffffff); break;
-	      case 0x7c: s->GPAREN0 = (value & 0xffffffff); break;
-	      case 0x80: s->GPAREN1 = (value & 0xffffffff); break;
-	      case 0x88: s->GPAFEN0 = (value & 0xffffffff); break;
-	      case 0x8c: s->GPAFEN1 = (value & 0xffffffff); break;
-		*/
+	    case 0x58: s->GPFEN0 = (value & 0xffffffff); break;
+	    case 0x5c: s->GPFEN1 = (value & 0xffffffff); break;
+	    case 0x64: s->GPHEN0 = (value & 0xffffffff); break;
+		case 0x68: s->GPHEN1 = (value & 0xffffffff); break;
+	    case 0x70: s->GPLEN0 = (value & 0xffffffff); break;
+	    case 0x74: s->GPLEN1 = (value & 0xffffffff); break;
+	    case 0x7c: s->GPAREN0 = (value & 0xffffffff); break;
+	    case 0x80: s->GPAREN1 = (value & 0xffffffff); break;
+	    case 0x88: s->GPAFEN0 = (value & 0xffffffff); break;
+	    case 0x8c: s->GPAFEN1 = (value & 0xffffffff); break;
+		
 		case 0x94: s->GPPUD = (value & 0xffffffff); break;
 		case 0x98: 
 		case 0x9c: s->GPPUDCLK[(offset/4)-38] = (value & 0xffffffff); break;
 		case 0x34: // GPLEV0 (Read-Only) 
 		case 0x38: // GPLEV1 (Read-Only) 
-		default: goto err_out;
+		default: goto error;
 	}
     
     write_gpio(s); // Set output levels and update simulator values 
     return;
-	err_out:
-    		fprintf(stderr, "[QEMU][Raspi] Warning Write to unknown offset %x!\n", (unsigned int)offset);
+	error:
+    	fprintf(stderr, "[QEMU][Raspi] Warning write to unknown offset %x!\n", (unsigned int)offset);
 }
 
 //Tie the read/ write functions to bcm_todo
@@ -461,8 +404,6 @@ static const VMStateDescription vmstate_bcm2835_todo = {
 
 static int bcm2835_todo_init(SysBusDevice *sbd)
 {
-    //const int SERVER_PORT = 8989;
-
     DeviceState *dev = DEVICE(sbd);
     bcm2835_todo_state *s = BCM2835_TODO(dev);
 
@@ -472,9 +413,7 @@ static int bcm2835_todo_init(SysBusDevice *sbd)
     memory_region_init_io(&s->iomem, OBJECT(s), &bcm2835_todo_ops, s,
         TYPE_BCM2835_TODO, 0xa0);
     sysbus_init_mmio(sbd, &s->iomem);
-
     vmstate_register(dev, -1, &vmstate_bcm2835_todo, s);
-
     s->socketfd = setup_socket();
     return 0;
 
@@ -485,7 +424,6 @@ static int bcm2835_todo_init(SysBusDevice *sbd)
 static void bcm2835_todo_class_init(ObjectClass *klass, void *data)
 {
     SysBusDeviceClass *sdc = SYS_BUS_DEVICE_CLASS(klass);
-
     sdc->init = bcm2835_todo_init;
 }
 
