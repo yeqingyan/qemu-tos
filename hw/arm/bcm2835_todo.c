@@ -229,7 +229,7 @@ static uint64_t read_gpio(bcm2835_todo_state *s) {
 	json_object *jobj = json_object_new_object();
 	sprintf(PINDIR,"%d", s->PINDIR); //ld??????
 	sprintf(PINSET,"%d", s->PINSET);
-	fprintf(stderr, "\n\n[QEMU][Raspi] PINDIR= %x, PINSET = %x \n",s->PINDIR,s->PINSET);
+	fprintf(stderr, "\n\n[QEMU][Raspi] PINDIR= %d, PINSET = %d \n",s->PINDIR,s->PINSET);
 	json_object_object_add(jobj,"PINDIR", json_object_new_string(PINDIR));
 	json_object_object_add(jobj,"PINSET", json_object_new_string(PINSET));
 	json_object_object_add(jobj,"READ", json_object_new_boolean(true)); // this field is used to by Simulator to decide whether to send back PINSET values or not
@@ -248,7 +248,7 @@ static uint64_t read_gpio(bcm2835_todo_state *s) {
 
 	printf("\nString received:  %s \n", buf);
 	GPLEV_64 = strtoull(buf, NULL, 16);
-	printf("\n Received PINSET value:  %x \n", GPLEV_64);
+	printf("\n Received PINSET value:  %d \n", GPLEV_64);
 	/*int LEV[2];
 	LEV[1] = (int)((s->PINSET >> GPIO_REG_SIZE) & 0xff);// 32-64
 	LEV[0] = (int)(s->PINSET & 0xff);        //0-32
@@ -276,7 +276,7 @@ static void print_registers(bcm2835_todo_state *s)
     	{
 		fprintf(stderr, "\n[QEMU][Raspi] s->GPFSEL[%d]  = %x!\n", i, s->GPFSEL[i]);
 	}
-	fprintf(stderr, "[QEMU][Raspi] s->PINSET  = %x!\n", s->PINSET);
+	fprintf(stderr, "[QEMU][Raspi] s->PINSET  = %d!\n", s->PINSET);
 	//fprintf(stderr, "[QEMU][Raspi] s->PINSET[1]  = %x!\n", s->PINSET[1]);
 
 }
