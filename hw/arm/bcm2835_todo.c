@@ -25,6 +25,38 @@
 #define OUTPUT 0x01
 #define SETBIT(reg,bit) (reg |= (1ULL << (bit)))
 #define CLRBIT(reg,bit) (reg &= (~(1ULL << (bit))))
+#define CHECKBIT(ADDRESS,BIT) (ADDRESS & (1ULL << BIT))
+
+// GPIO Registers offset
+#define _GPFSEL0 0x0
+#define _GPFSEL1 0x4
+#define _GPFSEL2 0x8
+#define _GPFSEL3 0xC
+#define _GPFSEL4 0x10
+#define _GPFSEL5 0x14
+#define _GPSET0  0x1C
+#define _GPSET1  0x2D
+#define _GPCLR0  0x28
+#define _GPCLR1  0x2C
+#define _GPLEV0  0x34
+#define _GPLEV1  0x38
+#define _GPEDS0  0x40  
+#define _GPEDS1  0x44  
+#define _GPREN0  0x4c  
+#define _GPREN1  0x50  
+#define _GPFEN0  0x58  
+#define _GPFEN1  0x5c  
+#define _GPHEN0  0x64  
+#define _GPHEN1  0x68  
+#define _GPLEN0  0x70  
+#define _GPLEN1  0x74  
+#define _GPAREN0 0x7c  
+#define _GPAREN1 0x80  
+#define _GPAFEN0 0x88  
+#define _GPAFEN1 0x8c  
+#define _GPPUD   0x94  
+#define _GPPUDCLK0 0X98
+#define _GPPUDCLK1 0x9C
 
 typedef struct {
     SysBusDevice busdev;
@@ -80,6 +112,8 @@ typedef struct {
 
     uint64_t PINSET; // Derived output state for pins 0-53 based on SET and CLR registers 
 	uint64_t PINDIR; // Derived direction state for pins 0-53 based on GPFSEL registers 
+	uint64_t PUD[2]; // Derived pull up/down state for pins 0-53 based on GPPUD and GPPUDCLK
+					 //Each pin will be represented by two bits | 00 = No PUD | 01 = Pull Down | 10 = Pull Up | 11 = Reserved
 } bcm2835_todo_state;
 
 static int setup_socket(void) {
@@ -123,25 +157,22 @@ static uint32_t get_function (bcm2835_todo_state *s, int pin){
     return ((s->GPFSEL[index] >> (3*(pin-(index*10))) & 0x7));
 }
 
-static void print_registers(bcm2835_todo_state *s)
-{
-	for (int i=0; i<6; i++){
-		fprintf(stderr, "\n[QEMU][Raspi] s->GPFSEL[%d]  = %d!\n", i, s->GPFSEL[i]);
-	}
-	fprintf(stderr, "[QEMU][Raspi] s->PINSET  = %d!\n", s->PINSET);
-
-}
 static void send_json_to_simulator(bcm2835_todo_state *s, bool Read_Status)
 {
-	char PINSET[30],PINDIR[30];
+	char PINSET[30],PINDIR[30],PUD0[30],PUD1[30];
 	json_object *jobj = json_object_new_object(); //Creating a json object to send to GPIO Simulator
 	sprintf(PINDIR,"%d", s->PINDIR); 
 	sprintf(PINSET,"%d", s->PINSET);
+	sprintf(PUD0,"%d", s->PUD[0]);
+	sprintf(PUD1,"%d",s->PUD[1]);
 	json_object_object_add(jobj,"PINDIR", json_object_new_string(PINDIR));
 	json_object_object_add(jobj,"PINSET", json_object_new_string(PINSET));
+	json_object_object_add(jobj,"PUD0", json_object_new_string(PUD0));
+	json_object_object_add(jobj,"PUD1", json_object_new_string(PUD1));
 	json_object_object_add(jobj,"READ", json_object_new_boolean(Read_Status)); // this field is used by Simulator to decide whether to send back PINSET values or not
 
 	const char * string = json_object_to_json_string(jobj);
+	fprintf(stderr, "[QEMU][Raspi] To Simulator:  %s \n",string);
 	int n = write(s->socketfd, string, strlen(string)); // Send the JSON String to GPIO Simulator
    	n = write(s->socketfd, "\n", 1);
 	if (n < 0)  {
@@ -149,7 +180,21 @@ static void send_json_to_simulator(bcm2835_todo_state *s, bool Read_Status)
     }    
 }
 
-static uint64_t read_gpio(bcm2835_todo_state *s) {
+static void set_pud(bcm2835_todo_state *s, int index){
+	for(int bit=0;bit<32;bit++){
+		if(CHECKBIT(s->GPPUDCLK[index],bit)){
+			switch(s->GPPUD){
+				case 0:	CLRBIT(s->PUD[index],bit*2); 
+						CLRBIT(s->PUD[index],(bit*2)+1); break;			
+				case 1: SETBIT(s->PUD[index],bit*2); break; //Pull Down 01
+				case 2: SETBIT(s->PUD[index],(bit*2)+1); break; //Pull Up 10
+				default:break;
+			}
+		}
+	}
+}
+
+static void read_gpio(bcm2835_todo_state *s) {
     char buf[256];
     uint64_t GPLEV_64=0,mask;
     bzero(buf, 256);  //places 256 null bytes in the string buf
@@ -207,49 +252,47 @@ static void write_gpio(bcm2835_todo_state *s){
 
 static uint64_t bcm2835_todo_read(void *opaque, hwaddr offset,unsigned size)
 {
-    uint64_t value;
     bcm2835_todo_state *s = (bcm2835_todo_state *)opaque;
-   
+  
    switch (offset) {
-	case 0x00: 
-	case 0x04: 
-	case 0x08: 
-	case 0x0c: 
-	case 0x10:
-	case 0x14: return s->GPFSEL[offset/4];
+	case _GPFSEL0: 
+	case _GPFSEL1: 
+	case _GPFSEL2: 
+	case _GPFSEL3: 
+	case _GPFSEL4:
+	case _GPFSEL5: return s->GPFSEL[offset/4];
 	
-	case 0x34: 
-	case 0x38: read_gpio(s);//read from gpio simulator
+	case _GPLEV0: 
+	case _GPLEV1: read_gpio(s);//read from gpio simulator
 			   return s->GPLEV[(offset/4)-13];
 
-	case 0x40: return s->GPEDS0;
-	case 0x44: return s->GPEDS1;
-	case 0x4c: return s->GPREN0;
-	case 0x50: return s->GPREN1;
-	case 0x58: return s->GPFEN0;
-	case 0x5c: return s->GPFEN1;
-	case 0x64: return s->GPHEN0;
-	case 0x68: return s->GPHEN1;
-	case 0x70: return s->GPLEN0;
-	case 0x74: return s->GPLEN1;
-	case 0x7c: return s->GPAREN0;
-	case 0x80: return s->GPAREN1;
-	case 0x88: return s->GPAFEN0;
-	case 0x8c: return s->GPAFEN1;
-	case 0x94: return s->GPPUD;
-	case 0x98: 
-	case 0x9c: return s->GPPUDCLK[(offset/4)-38];
-	case 0x1c: // GPSET0 (Write-Only)
-	case 0x20: // GPSET1 (Write-Only)
-	case 0x28: // GPCLR0 (Write-Only)
-	case 0x2c: // GPCLR1 (Write-Only)
-        default:
+	case _GPEDS0: return s->GPEDS0;
+	case _GPEDS1: return s->GPEDS1;
+	case _GPREN0: return s->GPREN0;
+	case _GPREN1: return s->GPREN1;
+	case _GPFEN0: return s->GPFEN0;
+	case _GPFEN1: return s->GPFEN1;
+	case _GPHEN0: return s->GPHEN0;
+	case _GPHEN1: return s->GPHEN1;
+	case _GPLEN0: return s->GPLEN0;
+	case _GPLEN1: return s->GPLEN1;
+	case _GPAREN0: return s->GPAREN0;
+	case _GPAREN1: return s->GPAREN1;
+	case _GPAFEN0: return s->GPAFEN0;
+	case _GPAFEN1: return s->GPAFEN1;
+	case _GPPUD: return s->GPPUD;
+	case _GPPUDCLK0: 
+	case _GPPUDCLK1: return s->GPPUDCLK[(offset/4)-38];
+	case _GPSET0: // GPSET0 (Write-Only)
+	case _GPSET1: // GPSET1 (Write-Only)
+	case _GPCLR0: // GPCLR0 (Write-Only)
+	case _GPCLR1: // GPCLR1 (Write-Only)
+    default:
             fprintf(stderr, "[QEMU][Raspi] Warning Read from unknown offset %x!\n", (unsigned int)offset);
             break;
     }
     return 0;
 }
-
 
 // This fuction is called upon write detection 
 // Device states are updated according to the manipulated memory device 
@@ -260,35 +303,36 @@ static void bcm2835_todo_write(void *opaque, hwaddr offset,
     bcm2835_todo_state *s = (bcm2835_todo_state *)opaque;
     switch (offset)
        {
-		case 0x00:
-		case 0x04:
-		case 0x08:
-		case 0x0c:
-		case 0x10:
-		case 0x14: s->GPFSEL[offset/4] = (value & 0xffffffff);break;
-		case 0x1c: 
-		case 0x20: s->GPSET[(offset/4)-7] = (value & 0xffffffff);break;
-		case 0x28:
-		case 0x2c: s->GPCLR[(offset/4)-10] = (value & 0xffffffff); break;
-		case 0x40: s->GPEDS0 = (value & 0xffffffff); break;
-		case 0x44: s->GPEDS1 = (value & 0xffffffff); break;
-		case 0x4c: s->GPREN0 = (value & 0xffffffff); break;
-		case 0x50: s->GPREN1 = (value & 0xffffffff); break;
-	    case 0x58: s->GPFEN0 = (value & 0xffffffff); break;
-	    case 0x5c: s->GPFEN1 = (value & 0xffffffff); break;
-	    case 0x64: s->GPHEN0 = (value & 0xffffffff); break;
-		case 0x68: s->GPHEN1 = (value & 0xffffffff); break;
-	    case 0x70: s->GPLEN0 = (value & 0xffffffff); break;
-	    case 0x74: s->GPLEN1 = (value & 0xffffffff); break;
-	    case 0x7c: s->GPAREN0 = (value & 0xffffffff); break;
-	    case 0x80: s->GPAREN1 = (value & 0xffffffff); break;
-	    case 0x88: s->GPAFEN0 = (value & 0xffffffff); break;
-	    case 0x8c: s->GPAFEN1 = (value & 0xffffffff); break;
-		case 0x94: s->GPPUD = (value & 0xffffffff); break;
-		case 0x98: 
-		case 0x9c: s->GPPUDCLK[(offset/4)-38] = (value & 0xffffffff); break;
-		case 0x34: // GPLEV0 (Read-Only) 
-		case 0x38: // GPLEV1 (Read-Only) 
+		case _GPFSEL0: 
+		case _GPFSEL1: 
+		case _GPFSEL2: 
+		case _GPFSEL3: 
+		case _GPFSEL4:
+		case _GPFSEL5: s->GPFSEL[offset/4] = (value & 0xffffffff);break;
+		case _GPSET0:    
+		case _GPSET1: s->GPSET[(offset/4)-7] = (value & 0xffffffff);break;
+		case _GPCLR0:
+		case _GPCLR1: s->GPCLR[(offset/4)-10] = (value & 0xffffffff); break;
+		case _GPEDS0: s->GPEDS0 = (value & 0xffffffff); break;
+		case _GPEDS1: s->GPEDS1 = (value & 0xffffffff); break;
+		case _GPREN0: s->GPREN0 = (value & 0xffffffff); break;
+		case _GPREN1: s->GPREN1 = (value & 0xffffffff); break;
+	    case _GPFEN0: s->GPFEN0 = (value & 0xffffffff); break;
+	    case _GPFEN1: s->GPFEN1 = (value & 0xffffffff); break;
+	    case _GPHEN0: s->GPHEN0 = (value & 0xffffffff); break;
+		case _GPHEN1: s->GPHEN1 = (value & 0xffffffff); break;
+	    case _GPLEN0: s->GPLEN0 = (value & 0xffffffff); break;
+	    case _GPLEN1: s->GPLEN1 = (value & 0xffffffff); break;
+	    case _GPAREN0: s->GPAREN0 = (value & 0xffffffff); break;
+	    case _GPAREN1: s->GPAREN1 = (value & 0xffffffff); break;
+	    case _GPAFEN0: s->GPAFEN0 = (value & 0xffffffff); break;
+	    case _GPAFEN1: s->GPAFEN1 = (value & 0xffffffff); break;
+		case _GPPUD: s->GPPUD = (value & 0xffffffff); break;
+		case _GPPUDCLK0: 
+		case _GPPUDCLK1: s->GPPUDCLK[(offset/4)-38] = (value & 0xffffffff); 
+						 set_pud(s,(offset/4)-38);break;
+		case _GPLEV0: // GPLEV0 (Read-Only) 
+		case _GPLEV1: // GPLEV1 (Read-Only) 
 		default: goto error;
 	}
     
