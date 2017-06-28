@@ -23,15 +23,15 @@
 #define GPIO_TOTAL_PIN 54
 #define INPUT 0x00
 #define OUTPUT 0x01
-#define SETBIT(reg,bit) (reg |= (1ULL << (bit)))
-#define CLRBIT(reg,bit) (reg &= (~(1ULL << (bit))))
-#define CHECKBIT(ADDRESS,BIT) (ADDRESS & (1ULL << BIT))
+#define SETBIT(ADDRESS,BIT) (ADDRESS |= (1ULL << (BIT)))
+#define CLRBIT(ADDRESS,BIT) (ADDRESS &= (~(1ULL << (BIT))))
+#define CHECKBIT(ADDRESS,BIT) (ADDRESS & (1ULL << (BIT)))
 
-// GPIO Registers offset
-#define _GPFSEL0 0x0
-#define _GPFSEL1 0x4
-#define _GPFSEL2 0x8
-#define _GPFSEL3 0xC
+// GPIO Register Offset
+#define _GPFSEL0 0x00
+#define _GPFSEL1 0x04
+#define _GPFSEL2 0x08
+#define _GPFSEL3 0x0C
 #define _GPFSEL4 0x10
 #define _GPFSEL5 0x14
 #define _GPSET0  0x1C
@@ -85,27 +85,19 @@ typedef struct {
 
     uint32_t GPEDS0;    // 0x40 Event Detect Pins  0-31 [0=Event Not Detected | 1=Event Detected] 
     uint32_t GPEDS1;    // 0x44 Event Detect Pins 32-53 [0=Event Not Detected | 1=Event Detected] 
-
     uint32_t GPREN0;    // 0x4c Rising Edge Detect Enable Pins  0-31 [0=Rising Edge Detect Disabled | 1=Rising Edge Detect Enabled] 
     uint32_t GPREN1;    // 0x50 Rising Edge Detect Enable Pins 32-53 [0=Rising Edge Detect Disabled | 1=Rising Edge Detect Enabled] 
-
     uint32_t GPFEN0;    // 0x58 Falling Edge Detect Enable Pins  0-31 [0=Falling Edge Detect Disabled | 1=Falling Edge Detect Enabled] 
     uint32_t GPFEN1;    // 0x5c Falling Edge Detect Enable Pins 32-53 [0=Falling Edge Detect Disabled | 1=Falling Edge Detect Enabled] 
-
     uint32_t GPHEN0;    // 0x64 High Level Detect Enable Bits  0-31 [0=High Level Detect Disabled | 1=High Level Detect Enabled] 
     uint32_t GPHEN1;    // 0x68 High Level Detect Enable Bits 32-53 [0=High Level Detect Disabled | 1=High Level Detect Enabled] 
-   
     uint32_t GPLEN0;    // 0x70 Low Level Detect Enable Bits  0-31 [0=Low Level Detect Disabled | 1=Low Level Detect Enabled] 
-    uint32_t GPLEN1;    // 0x74 Low Level Detect Enable Bits 32-53 [0=Low Level Detect Disabled | 1=Low Level Detect Enabled] 
-    
+    uint32_t GPLEN1;    // 0x74 Low Level Detect Enable Bits 32-53 [0=Low Level Detect Disabled | 1=Low Level Detect Enabled]     
     uint32_t GPAREN0;   // 0x7c Async Rising Edge Detect Enable Pins  0-31 [1=Async Rising Edge Detect Disabled | 1=Async Rising Edge Detect Enabled] 
     uint32_t GPAREN1;   // 0x80 Async Rising Edge Detect Enable Pins 32-53 [1=Async Rising Edge Detect Disabled | 1=Async Rising Edge Detect Enabled] 
-    
     uint32_t GPAFEN0;   // 0x88 Async Falling Edge Detect Enable Pins  0-31 [1=Async Falling Edge Detect Disabled | 1=Async Falling Edge Detect Enabled] 
     uint32_t GPAFEN1;   // 0x8c Async Falling Edge Detect Enable Pins 32-53 [1=Async Falling Edge Detect Disabled | 1=Async Falling Edge Detect Enabled] 
-    
     uint32_t GPPUD;     // 0x94 Pull-Up/Pull-Down All Pins [Bits 1-0: 0=Disable Pull-Up/Pull-Down | 1=Enable Pull-Down Control | 2=Enable Pull-Up Control] 
-    
     uint32_t GPPUDCLK[2]; 
   /* GPPUDCLK[0] : 0x98 Pull-Up/Pull-Down Clock Pins  0-31 [0=No Effect | 1=Assert Clock on Line] 
      GPPUDCLK[1] : 0x9c Pull-Up/Pull-Down Clock Pins 32-53 [0=No Effect | 1=Assert Clock on Line]  */
@@ -172,7 +164,7 @@ static void send_json_to_simulator(bcm2835_todo_state *s, bool Read_Status)
 	json_object_object_add(jobj,"READ", json_object_new_boolean(Read_Status)); // this field is used by Simulator to decide whether to send back PINSET values or not
 
 	const char * string = json_object_to_json_string(jobj);
-	fprintf(stderr, "[QEMU][Raspi] To Simulator:  %s \n",string);
+	//fprintf(stderr, "[QEMU][Raspi] To Simulator:  %s \n",string);
 	int n = write(s->socketfd, string, strlen(string)); // Send the JSON String to GPIO Simulator
    	n = write(s->socketfd, "\n", 1);
 	if (n < 0)  {
@@ -181,15 +173,21 @@ static void send_json_to_simulator(bcm2835_todo_state *s, bool Read_Status)
 }
 
 static void set_pud(bcm2835_todo_state *s, int index){
-	for(int bit=0;bit<32;bit++){
+	for(int bit = 0; bit < GPIO_REG_SIZE; bit++){
 		if(CHECKBIT(s->GPPUDCLK[index],bit)){
+
 			switch(s->GPPUD){
 				case 0:	CLRBIT(s->PUD[index],bit*2); 
 						CLRBIT(s->PUD[index],(bit*2)+1); break;			
-				case 1: SETBIT(s->PUD[index],bit*2); break; //Pull Down 01
-				case 2: SETBIT(s->PUD[index],(bit*2)+1); break; //Pull Up 10
+				case 1: SETBIT(s->PUD[index],bit*2); 
+							
+						break; //Pull Down 01
+				case 2: //SETBIT(,(bit*2)+1); 
+						s->PUD[index] |= (uint64_t)(1ULL << (uint64_t)((bit*2)+1)); 
+							break; //Pull Up 10
 				default:break;
 			}
+			fprintf(stderr, "[QEMU][Raspi] pud: bit=%d, gppud=%d s->PUD[0]=%d \n",bit, s->GPPUD, s->PUD[index]);
 		}
 	}
 }
